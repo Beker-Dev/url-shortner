@@ -1,0 +1,65 @@
+services:
+  cassandra:
+    image: cassandra:5.0.9
+    environment:
+      CASSANDRA_CLUSTER_NAME: url-shortner
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_RACK: rack1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      CASSANDRA_SEEDS: cassandra
+    ports:
+      - "127.0.0.1:9042:9042"
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh 127.0.0.1 9042 -e 'SELECT release_version FROM system.local' >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+
+  cassandra-init:
+    image: cassandra:5.0.9
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        cqlsh cassandra 9042 -e "CREATE KEYSPACE IF NOT EXISTS url_shortner WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};"
+    restart: "no"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      cassandra-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      CASSANDRA_CONTACT_POINTS: cassandra
+      CASSANDRA_PORT: "9042"
+      CASSANDRA_KEYSPACE: url_shortner
+      REDIS_URL: redis://redis:6379/0
+      SHORT_CODE_SECRET_KEY: ${SHORT_CODE_SECRET_KEY:?Set SHORT_CODE_SECRET_KEY in your environment or .env file}
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    restart: unless-stopped
+
+volumes:
+  cassandra_data:
+  redis_data:

@@ -1,28 +1,18 @@
-import pydantic
-from uuid import UUID
 from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, HttpUrl
 
 
-class UrlShortnerBase(pydantic.BaseModel):
+class UrlShortnerCreate(BaseModel):
+    target_url: HttpUrl
+
+
+class UrlShortnerRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
-    target_url: pydantic.HttpUrl
+    target_url: HttpUrl
     short_code: str
-
-    class Config:
-        orm_mode = True
-
-
-class UrlShortnerCreate(UrlShortnerBase):
-    target_url: pydantic.HttpUrl
-    short_code: str
-
-    class Config:
-        orm_mode = True
-        
-class UrlShortnerRead(UrlShortnerBase):
     created_at: datetime
     updated_at: datetime
-    
-    class Config:
-        orm_mode = True
-    

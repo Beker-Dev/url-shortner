@@ -1,9 +1,13 @@
-import sqlalchemy as sa
-from src.domain.entities.base_entity import BaseEntity
+from dataclasses import dataclass
+from datetime import datetime
+from uuid import UUID
 
 
-class UrlShortnerEntity(BaseEntity):
-    __tablename__ = "url_shortner"
-    target_url = sa.Column(sa.String(2048), nullable=False)
-    short_code = sa.Column(sa.String(7), nullable=False, unique=True, index=True)
+@dataclass(frozen=True, slots=True)
+class UrlShortnerEntity:
+    id: UUID
+    target_url: str
+    short_code: str
+    created_at: datetime
+    updated_at: datetime
     
