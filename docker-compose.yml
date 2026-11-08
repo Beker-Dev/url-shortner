@@ -7,12 +7,18 @@ services:
       CASSANDRA_RACK: rack1
       CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
       CASSANDRA_SEEDS: cassandra
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        sed -i 's/^authenticator: AllowAllAuthenticator$/authenticator: PasswordAuthenticator/' /etc/cassandra/cassandra.yaml
+        sed -i 's/^authorizer: AllowAllAuthorizer$/authorizer: CassandraAuthorizer/' /etc/cassandra/cassandra.yaml
+        exec /usr/local/bin/docker-entrypoint.sh cassandra -f
     ports:
       - "127.0.0.1:9042:9042"
     volumes:
       - cassandra_data:/var/lib/cassandra
     healthcheck:
-      test: ["CMD-SHELL", "cqlsh 127.0.0.1 9042 -e 'SELECT release_version FROM system.local' >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "cqlsh 127.0.0.1 9042 -u cassandra -p cassandra -e 'SELECT release_version FROM system.local' >/dev/null 2>&1"]
       interval: 15s
       timeout: 10s
       retries: 20
@@ -23,10 +29,15 @@ services:
     depends_on:
       cassandra:
         condition: service_healthy
+    environment:
+      CASSANDRA_USERNAME: ${CASSANDRA_USERNAME:?Set CASSANDRA_USERNAME in your environment or .env file}
+      CASSANDRA_PASSWORD: ${CASSANDRA_PASSWORD:?Set CASSANDRA_PASSWORD in your environment or .env file}
     entrypoint: ["/bin/bash", "-ec"]
     command:
       - |
-        cqlsh cassandra 9042 -e "CREATE KEYSPACE IF NOT EXISTS url_shortner WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};"
+        cqlsh cassandra 9042 -u cassandra -p cassandra -e "CREATE KEYSPACE IF NOT EXISTS url_shortner WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};"
+        cqlsh cassandra 9042 -u cassandra -p cassandra -e "CREATE ROLE IF NOT EXISTS $${CASSANDRA_USERNAME} WITH PASSWORD = '$${CASSANDRA_PASSWORD}' AND LOGIN = true;"
+        cqlsh cassandra 9042 -u cassandra -p cassandra -e "GRANT ALL PERMISSIONS ON KEYSPACE url_shortner TO $${CASSANDRA_USERNAME};"
     restart: "no"
 
   redis:
@@ -54,10 +65,12 @@ services:
       CASSANDRA_CONTACT_POINTS: cassandra
       CASSANDRA_PORT: "9042"
       CASSANDRA_KEYSPACE: url_shortner
+      CASSANDRA_USERNAME: ${CASSANDRA_USERNAME:?Set CASSANDRA_USERNAME in your environment or .env file}
+      CASSANDRA_PASSWORD: ${CASSANDRA_PASSWORD:?Set CASSANDRA_PASSWORD in your environment or .env file}
       REDIS_URL: redis://redis:6379/0
       SHORT_CODE_SECRET_KEY: ${SHORT_CODE_SECRET_KEY:?Set SHORT_CODE_SECRET_KEY in your environment or .env file}
     ports:
-      - "127.0.0.1:${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT?Set API_PORT in your environment or .env file}:8000"
     restart: unless-stopped
 
 volumes:

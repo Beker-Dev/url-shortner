@@ -3,6 +3,25 @@
 The API stores URL shorteners in Apache Cassandra using ScyllaDB's
 Python driver (`scylla-driver`), which also supports Apache Cassandra.
 
+## Architecture
+
+The code is divided by responsibility:
+
+- `src/domain` contains the URL shortener entity and abstract repository and
+  short-code generation contracts.
+- `src/application/dtos` contains the application request and response DTOs.
+- `src/application/commands` and `src/application/queries` implement CQRS:
+  the create command and its handler are separate from read queries and
+  their handlers, without depending on Cassandra, Redis, or Hashids.
+- `src/application/controller` contains the FastAPI class-based controller,
+  dependency adapters, and API routes.
+- `src/infrastructure` implements persistence with Cassandra and short-code
+  generation with Redis and Hashids. `EnvSettings` validates environment
+  variables and the optional `.env` file using Pydantic Settings.
+
+`src/main.py` is the composition root: it creates infrastructure adapters and
+injects them into command and query handlers.
+
 ## Executar com Docker Compose
 
 Suba o Cassandra 5.0.9, o Redis e a API:
@@ -52,18 +71,28 @@ O Cassandra usa
 `IF NOT EXISTS` como proteção adicional contra colisões com códigos já
 persistidos. Todas as instâncias da API devem apontar para o mesmo Redis; no
 Compose, o contador fica persistido no volume `redis_data`. Fora do Docker
-Compose, configure `REDIS_URL` (padrão `redis://127.0.0.1:6379/0`) e
-`SHORT_CODE_SECRET_KEY`, além das variáveis Cassandra:
+Compose, configure todas as variáveis abaixo no `.env` ou no ambiente. Não há
+valores padrão; usuário e senha Cassandra podem ficar vazios quando a
+autenticação estiver desabilitada:
 
-| Variable | Default | Description |
+| Variable | Requirement | Description |
 | --- | --- | --- |
-| `CASSANDRA_CONTACT_POINTS` | `127.0.0.1` | Comma-separated Cassandra hosts |
-| `CASSANDRA_PORT` | `9042` | Cassandra native transport port |
-| `CASSANDRA_KEYSPACE` | `url_shortner` | Existing keyspace |
-| `CASSANDRA_USERNAME` | — | Optional username; set with the password |
-| `CASSANDRA_PASSWORD` | — | Optional password; set with the username |
-| `REDIS_URL` | `redis://127.0.0.1:6379/0` | Redis connection URL |
-| `SHORT_CODE_SECRET_KEY` | — | Required Hashids salt; use the same value across API instances |
+| `CASSANDRA_CONTACT_POINTS` | Required | Comma-separated Cassandra hosts |
+| `CASSANDRA_PORT` | Required | Cassandra native transport port |
+| `CASSANDRA_KEYSPACE` | Required | Existing keyspace |
+| `CASSANDRA_USERNAME` | Required; Compose uses `admin` | Cassandra username; empty only when external Cassandra auth is disabled |
+| `CASSANDRA_PASSWORD` | Required; Compose uses `admin` | Cassandra password; empty only when external Cassandra auth is disabled |
+| `REDIS_URL` | Required | Redis connection URL |
+| `SHORT_CODE_SECRET_KEY` | Required | Hashids salt; use the same value across API instances |
+
+O Compose também exige `API_PORT` para a porta publicada pela API. Copie
+`.env.example` para `.env` e preencha a chave secreta antes de subir o ambiente.
+No Compose, o Cassandra habilita autenticação e a inicialização cria `admin`
+com a senha `admin`, concedendo acesso ao keyspace `url_shortner`. Essas
+credenciais são apenas para desenvolvimento local; use uma senha forte e
+gerencie usuários/permissões adequadamente em produção. O usuário inicial
+`cassandra/cassandra` é usado pelo serviço de inicialização para criar o
+keyspace e configurar o usuário da aplicação.
 
 `GET /api/url-shortner/` uses a full-table scan (`ALLOW FILTERING`) to preserve
 the current list-all API. This is suitable for a small dataset; a large
