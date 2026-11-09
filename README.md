@@ -43,13 +43,13 @@ The code is divided by responsibility:
 `src/main.py` is the API entry point: it configures FastAPI and its routes,
 delegating resource lifecycle management to the infrastructure layer.
 
-## Executar com Docker Compose
+## Run with Docker Compose
 
-Suba o Cassandra 5.0.9, o Redis, duas instâncias da API e o Nginx como
-balanceador de carga:
+Start Cassandra 5.0.9, Redis, two API instances, and Nginx as the load
+balancer:
 
-No PowerShell, gere e salve uma chave local no `.env` (ignorado pelo Git)
-antes de subir o Compose:
+In PowerShell, generate and save a local key in `.env` (ignored by Git)
+before starting Compose:
 
 ```powershell
 [IO.File]::WriteAllText(
@@ -60,24 +60,24 @@ antes de subir o Compose:
 docker compose up --build
 ```
 
-O Compose aguarda o Cassandra e os dois serviços Redis ficarem saudáveis, cria
-o keyspace `url_shortner` e então inicia as instâncias da API atrás do
-balanceador Nginx. O Redis principal mantém o contador de códigos; o serviço
-`url-cache-redis` separado guarda o cache e as contagens temporárias de acessos.
-Para alterar a quantidade de instâncias, por exemplo, para três, use:
+Compose waits for Cassandra and both Redis services to become healthy, creates
+the `url_shortner` keyspace, and then starts the API instances behind the Nginx
+load balancer. The primary Redis service stores the short-code counter; the
+separate `url-cache-redis` service stores the cache and temporary access counts.
+To change the number of instances, for example to three, run:
 
 ```powershell
 docker compose up --build --scale api=3
 ```
 
-O Nginx atualiza a descoberta das instâncias automaticamente. O contador Redis
-é persistido no volume `redis_data`; o Redis de cache é efêmero e pode ser
-descartado sem afetar a geração dos códigos. Os dados do Cassandra ficam no
-volume `cassandra_data`. A API fica disponível através do balanceador em
-`http://localhost:8000` por padrão. Se a porta 8000 já estiver ocupada, defina
-`API_PORT` para outra porta (por exemplo, `API_PORT=8001`).
+Nginx automatically updates its service discovery as instances change. The
+Redis counter is persisted in the `redis_data` volume; the cache Redis is
+ephemeral and can be discarded without affecting code generation. Cassandra
+data is stored in the `cassandra_data` volume. The API is available through
+the load balancer at `http://localhost:8000` by default. If port 8000 is
+already in use, set `API_PORT` to another port (for example, `API_PORT=8001`).
 
-Para encerrar os containers sem apagar os dados:
+To stop the containers without deleting the data:
 
 ```bash
 docker compose down
@@ -93,20 +93,19 @@ CREATE KEYSPACE url_shortner
 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
 ```
 
-A aplicação cria a tabela `url_shortner` ao iniciar. Os códigos são gerados
-por `INCR` atômico no Redis e codificados com Hashids usando alfabeto Base62.
-Configure `SHORT_CODE_SECRET_KEY` com no mínimo 6 caracteres (guarde o mesmo
-valor em todas as instâncias e não o compartilhe). Hashids garante códigos com
-no mínimo quatro caracteres; é uma forma de ofuscação, não criptografia.
-O contador Redis é inicializado atomicamente em
-`62³ - 1` (ou mantido se já for maior), então o primeiro `INCR` usa `62³`.
-O Cassandra usa
-`IF NOT EXISTS` como proteção adicional contra colisões com códigos já
-persistidos. Todas as instâncias da API devem apontar para o mesmo Redis; no
-Compose, o contador fica persistido no volume `redis_data`. Fora do Docker
-Compose, configure todas as variáveis abaixo no `.env` ou no ambiente. Não há
-valores padrão; usuário e senha Cassandra podem ficar vazios quando a
-autenticação estiver desabilitada:
+The application creates the `url_shortner` table on startup. Short codes are
+generated using Redis's atomic `INCR` command and encoded with Hashids using
+the Base62 alphabet. Set `SHORT_CODE_SECRET_KEY` to a value of at least 6
+characters (use the same value across all instances and do not share it).
+Hashids ensures codes are at least four characters long; it provides
+obfuscation, not encryption. The Redis counter is initialized atomically to
+`62³ - 1` (or left unchanged if it is already higher), so the first `INCR`
+uses `62³`. Cassandra uses `IF NOT EXISTS` as an additional safeguard against
+collisions with persisted codes. All API instances must use the same Redis
+service; in Compose, the counter is persisted in the `redis_data` volume.
+Outside Docker Compose, configure all the variables below in `.env` or in the
+environment. There are no default values; the Cassandra username and password
+can be empty when authentication is disabled:
 
 | Variable | Requirement | Description |
 | --- | --- | --- |
@@ -119,18 +118,44 @@ autenticação estiver desabilitada:
 | `URL_CACHE_REDIS_URL` | Required | Separate Redis connection URL for URL cache and access counts |
 | `SHORT_CODE_SECRET_KEY` | Required | Hashids salt; use the same value across API instances |
 
-O Compose também exige `API_PORT` para a porta publicada pelo balanceador. Copie
-`.env.example` para `.env` e preencha a chave secreta antes de subir o ambiente.
-As leituras por código curto são promovidas ao cache após 5 acessos em uma janela
-de 10 minutos e permanecem em cache por 1 hora. As contagens são compartilhadas
-entre as réplicas da API pelo Redis dedicado ao cache.
-No Compose, o Cassandra habilita autenticação e a inicialização cria `admin`
-com a senha `admin`, concedendo acesso ao keyspace `url_shortner`. Essas
-credenciais são apenas para desenvolvimento local; use uma senha forte e
-gerencie usuários/permissões adequadamente em produção. O usuário inicial
-`cassandra/cassandra` é usado pelo serviço de inicialização para criar o
-keyspace e configurar o usuário da aplicação.
+Compose also requires `API_PORT` for the port published by the load balancer.
+Copy `.env.example` to `.env` and set the secret key before starting the
+environment. Short-code lookups are promoted to the cache after 5 accesses
+within a 10-minute window and remain cached for 1 hour. Access counts are
+shared across API replicas through the dedicated cache Redis service.
+
+In Compose, Cassandra authentication is enabled, and the initialization
+service creates the `admin` user with the password `admin`, granting access to
+the `url_shortner` keyspace. These credentials are for local development only;
+use a strong password and manage users and permissions appropriately in
+production. The initial `cassandra/cassandra` user is used by the
+initialization service to create the keyspace and configure the application
+user.
 
 `GET /api/url-shortner/` uses a full-table scan (`ALLOW FILTERING`) to preserve
 the current list-all API. This is suitable for a small dataset; a large
 production dataset should use a query-specific listing table and pagination.
+
+## Tests
+
+Run the unit tests, including application, domain, and infrastructure adapter
+tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests
+```
+
+To validate the application with real Cassandra, both Redis services, two API
+replicas, and Nginx through Docker Compose, run the end-to-end test (Docker
+must be available, and local ports must be free):
+
+```powershell
+$env:RUN_DOCKER_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest discover -s tests\integration
+Remove-Item Env:RUN_DOCKER_INTEGRATION
+```
+
+The test uses an isolated Compose project and volumes. It verifies requests
+through the load balancer, URL creation and retrieval, promotion to the cache
+Redis, and uniqueness and advancement of the `INCR` counter. On completion, it
+removes the containers and volumes created for the test project.

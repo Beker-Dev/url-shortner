@@ -89,6 +89,21 @@ class RedisCachedUrlShortnerRepositoryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(await api_repositories[0].get_by_short_code("hot"), entity)
         self.assertEqual(repository.lookup_count, HOT_ACCESS_THRESHOLD)
+        self.assertEqual(
+            redis.counters["url-shortner:access:hot"],
+            HOT_ACCESS_THRESHOLD + 1,
+        )
+
+    async def test_successful_save_invalidates_cached_url(self) -> None:
+        entity = self._entity()
+        repository = InMemoryUrlShortnerRepository(None)
+        redis = InMemoryRedis()
+        redis.values["url-shortner:cache:hot"] = "stale"
+        cached_repository = RedisCachedUrlShortnerRepository(repository, redis)
+
+        self.assertTrue(await cached_repository.save(entity))
+
+        self.assertNotIn("url-shortner:cache:hot", redis.values)
 
     async def test_missing_urls_are_not_counted_or_cached(self) -> None:
         repository = InMemoryUrlShortnerRepository(None)

@@ -14,7 +14,7 @@ services:
         sed -i 's/^authorizer: AllowAllAuthorizer$/authorizer: CassandraAuthorizer/' /etc/cassandra/cassandra.yaml
         exec /usr/local/bin/docker-entrypoint.sh cassandra -f
     ports:
-      - "127.0.0.1:9042:9042"
+      - "127.0.0.1:${CASSANDRA_HOST_PORT:-9042}:9042"
     volumes:
       - cassandra_data:/var/lib/cassandra
     healthcheck:
@@ -44,7 +44,7 @@ services:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -57,7 +57,7 @@ services:
   url-cache-redis:
     image: redis:7-alpine
     ports:
-      - "127.0.0.1:6380:6379"
+      - "127.0.0.1:${URL_CACHE_REDIS_HOST_PORT:-6380}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
