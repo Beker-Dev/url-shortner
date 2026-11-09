@@ -22,14 +22,13 @@ class CreateUrlShortnerCommandHandler:
         self._short_code_generator = short_code_generator
 
     async def handle(self, command: CreateUrlShortnerCommand) -> UrlShortnerEntity:
-        while True:
-            now = datetime.now(timezone.utc)
-            entity = UrlShortnerEntity(
-                id=uuid4(),
-                target_url=command.target_url,
-                short_code=await self._short_code_generator.generate(),
-                created_at=now,
-                updated_at=now,
-            )
-            if await self._repository.save(entity):
-                return entity
+        now = datetime.now(timezone.utc)
+        entity = UrlShortnerEntity(
+            id=uuid4(),
+            target_url=command.target_url,
+            short_code=await self._short_code_generator.generate(),
+            created_at=now,
+            updated_at=now,
+        )
+        if await self._repository.save(entity):
+            return entity

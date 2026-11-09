@@ -16,6 +16,7 @@ class EnvSettingsTests(unittest.TestCase):
             "CASSANDRA_USERNAME": "user",
             "CASSANDRA_PASSWORD": "password",
             "REDIS_URL": "redis://redis:6379/2",
+            "URL_CACHE_REDIS_URL": "redis://url-cache-redis:6379/0",
             "SHORT_CODE_SECRET_KEY": "a-secret-key",
         }
 
@@ -28,6 +29,10 @@ class EnvSettingsTests(unittest.TestCase):
         self.assertEqual(settings.cassandra_username, "user")
         self.assertEqual(settings.cassandra_password, "password")
         self.assertEqual(settings.redis_url, "redis://redis:6379/2")
+        self.assertEqual(
+            settings.url_cache_redis_url,
+            "redis://url-cache-redis:6379/0",
+        )
         self.assertEqual(settings.short_code_secret_key, "a-secret-key")
 
     def test_requires_all_configuration_values(self) -> None:
@@ -49,6 +54,7 @@ class EnvSettingsTests(unittest.TestCase):
             "CASSANDRA_USERNAME": "",
             "CASSANDRA_PASSWORD": "",
             "REDIS_URL": "redis://127.0.0.1:6379/0",
+            "URL_CACHE_REDIS_URL": "redis://127.0.0.1:6380/0",
             "SHORT_CODE_SECRET_KEY": "a-secret-key",
         }
 

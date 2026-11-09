@@ -10,14 +10,14 @@ from src.application.queries.list_url_shortners import ListUrlShortnersQueryHand
 def get_create_url_shortner_handler(
     request: Request,
 ) -> CreateUrlShortnerCommandHandler:
-    return request.app.state.create_url_shortner_handler
+    return request.app.state.handlers.create_url_shortner
 
 
 def get_get_url_shortner_handler(request: Request) -> GetUrlShortnerQueryHandler:
-    return request.app.state.get_url_shortner_handler
+    return request.app.state.handlers.get_url_shortner
 
 
 def get_list_url_shortners_handler(
     request: Request,
 ) -> ListUrlShortnersQueryHandler:
-    return request.app.state.list_url_shortners_handler
+    return request.app.state.handlers.list_url_shortners

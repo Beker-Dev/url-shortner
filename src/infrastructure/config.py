@@ -36,6 +36,9 @@ class EnvSettings(BaseSettings):
     redis_url: str = Field(
         validation_alias="REDIS_URL",
     )
+    url_cache_redis_url: str = Field(
+        validation_alias="URL_CACHE_REDIS_URL",
+    )
     short_code_secret_key: str = Field(
         min_length=6,
         validation_alias="SHORT_CODE_SECRET_KEY",
