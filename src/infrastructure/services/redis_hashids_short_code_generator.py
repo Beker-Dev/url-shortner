@@ -6,7 +6,7 @@ from src.domain.services.short_code_generator import ShortCodeGenerator
 
 class RedisHashidsShortCodeGenerator(ShortCodeGenerator):
     _COUNTER_KEY = "url_shortner:short_code:sequence"
-    _COUNTER_MINIMUM = 62**3 - 1
+    _COUNTER_MINIMUM = 62**3 - 1 # minimum of 4 characters in base62
     _BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
     def __init__(self, redis: Redis, secret_key: str) -> None:
