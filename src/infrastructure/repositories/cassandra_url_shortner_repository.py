@@ -9,6 +9,12 @@ from src.domain.repositories.url_shortner_repository import UrlShortnerRepositor
 
 
 class CassandraUrlShortnerRepository(UrlShortnerRepository):
+    """Run blocking Session.execute calls in threads to avoid blocking the event loop.
+
+    Session.execute_async returns a callback-based ResponseFuture, not an asyncio
+    awaitable, so using it here would require additional callback adaptation.
+    """
+
     def __init__(self, session: Session) -> None:
         self._session = session
         self._insert = session.prepare(
