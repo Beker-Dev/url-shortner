@@ -83,6 +83,126 @@ To stop the containers without deleting the data:
 docker compose down
 ```
 
+### Adding Cassandra nodes
+
+The Compose file currently defines one Cassandra node. Do not increase it with
+`docker compose up --scale cassandra=3`: the replicas would share the
+`cassandra_data` volume and try to publish the same host port. Cassandra nodes
+need separate services and separate data volumes.
+
+For a three-node, single-datacenter development cluster:
+
+1. Keep the existing `cassandra` service as the first node, then add
+   `cassandra-2` and `cassandra-3` services. Copy the existing Cassandra
+   service settings, including its authentication entrypoint and healthcheck.
+   Give each added node its own named volume, for example
+   `cassandra_2_data:/var/lib/cassandra` and
+   `cassandra_3_data:/var/lib/cassandra`, and declare those volumes at the end
+   of the Compose file. Never mount the same Cassandra data volume into
+   multiple nodes.
+
+   For example, the topology-specific part of a second service is:
+
+   ```yaml
+   cassandra-2:
+     image: cassandra:5.0.9
+     environment:
+       CASSANDRA_CLUSTER_NAME: url-shortner
+       CASSANDRA_DC: datacenter1
+       CASSANDRA_RACK: rack1
+       CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+       CASSANDRA_SEEDS: cassandra,cassandra-2
+     volumes:
+       - cassandra_2_data:/var/lib/cassandra
+   ```
+
+   Copy the existing service's `entrypoint`, `command`, and `healthcheck` too;
+   the example omits them for brevity. Add `cassandra_2_data:` to the top-level
+   `volumes` section, and create a corresponding service and volume for each
+   further node.
+2. Set the same `CASSANDRA_CLUSTER_NAME`, `CASSANDRA_DC`, and
+   `CASSANDRA_ENDPOINT_SNITCH` on every node. Set `CASSANDRA_RACK` to match
+   the node's actual rack; containers on one development machine are not
+   separate failure domains. Configure the same seed list on every node, for
+   example `CASSANDRA_SEEDS: cassandra,cassandra-2`. Seeds help nodes discover
+   the cluster; they do not determine data ownership.
+3. Keep the existing host port mapping on only one node, or assign a different
+   host port to each node if direct host access is needed. Nodes and the API
+   can reach one another on port `9042` over Compose's internal network.
+4. Change the API's `CASSANDRA_CONTACT_POINTS` to include multiple service
+   names, for example `cassandra,cassandra-2,cassandra-3`. Update
+   `cassandra-init` to wait for all intended nodes to become healthy before
+   creating the keyspace.
+5. For three nodes in `datacenter1`, create the keyspace with a replication
+   factor of 3:
+
+   ```sql
+   CREATE KEYSPACE url_shortner
+   WITH replication = {
+       'class': 'NetworkTopologyStrategy',
+       'datacenter1': 3
+   };
+   ```
+
+   Use the actual `CASSANDRA_DC` value, and do not set the replication factor
+   higher than the number of nodes in that datacenter. The current
+   `cassandra-init` command uses `CREATE KEYSPACE IF NOT EXISTS` with
+   `SimpleStrategy` and replication factor 1; update it for a new cluster.
+
+Start the services and check that all nodes are `UN` (Up/Normal):
+
+```powershell
+docker compose up -d
+docker compose exec cassandra nodetool status
+```
+
+When a new node joins with its own empty data volume, Cassandra automatically
+assigns it token ranges and bootstraps the corresponding data. For an existing
+keyspace, `CREATE KEYSPACE IF NOT EXISTS` does not change its replication
+settings. Alter it explicitly, then run Cassandra repair on the nodes so
+existing data is copied to the new replicas:
+
+```sql
+ALTER KEYSPACE url_shortner
+WITH replication = {
+    'class': 'NetworkTopologyStrategy',
+    'datacenter1': 3
+};
+```
+
+Because this Compose enables authentication, also configure `system_auth`
+with `NetworkTopologyStrategy` and an appropriate replication factor, then
+repair it as well. For the three-node example:
+
+```sql
+ALTER KEYSPACE system_auth
+WITH replication = {
+    'class': 'NetworkTopologyStrategy',
+    'datacenter1': 3
+};
+```
+
+Changing the replication settings does not itself copy existing data. Run
+repair for both keyspaces on each node; for example:
+
+```powershell
+docker compose exec cassandra nodetool repair url_shortner
+docker compose exec cassandra-2 nodetool repair url_shortner
+docker compose exec cassandra-3 nodetool repair url_shortner
+docker compose exec cassandra nodetool repair system_auth
+docker compose exec cassandra-2 nodetool repair system_auth
+docker compose exec cassandra-3 nodetool repair system_auth
+```
+
+Repair can use significant disk and network resources; plan it for the size
+and load of the cluster.
+
+Before removing a node, decommission it with `nodetool decommission` rather
+than simply deleting its Compose service or volume. A multi-node Compose
+cluster on one machine is useful for development, but does not provide
+production fault isolation; production nodes should be distributed across
+separate hosts and, where possible, racks or availability zones.
+
 ## Cassandra configuration
 
 Create the keyspace before starting the API. For a single-node local Cassandra
